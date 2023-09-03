@@ -1,41 +1,101 @@
+import fastapi
 import pandas as pd
 import numpy as np
+import pyarrow as pa
+from datetime import datetime
+import json
+from fastapi.responses import JSONResponse
+import orjson
+
+class ORJSONResponse(JSONResponse):
+    media_type = "application/json"
+    def render(self, content):
+        return orjson.dumps(content)
 
 df_items = pd.read_parquet('items.parquet')
+df_items['item_id'] = df_items['item_id'].astype(str)
 df_review = pd.read_csv('reviews.csv')
+df_review['item_id'] = df_review['item_id'].astype(str)
 df_games = pd.read_csv('games.csv')
+df_games['item_id'] = df_games['item_id'].astype(str)
 
-def user_data(user_id):
-    # Filtrar las columnas relevantes en df_games y df_review
+# Asignar un valor a la variable app
+app = fastapi.FastAPI(default_response_class=ORJSONResponse)
+
+# Definir los endpoints de la API
+@app.get("/")
+def index():
+    return {"message": "Bienvenido a la API de Cristhian!"}
+
+@app.get("/userdata/{user_id}")
+def user_data_endpoint(user_id: str):
+    user_data_r = userdata(user_id)
+    return user_data_r
+
+@app.get("/countreviews/{start_date}y{end_date}")
+def countreviews_endpoint(start_date: str, end_date: str):
+    countreviews_r = countreviews(start_date, end_date)
+    return countreviews_r
+
+@app.get("/genre/{genero}")
+def genre_endpoint(genero: str):
+    genero_r = genre(genero)
+    if genero_r:
+        return JSONResponse(content=genero_r)
+    else:
+        return JSONResponse(content={})
+
+@app.get("/userforgenre/{genre}")
+def userforgenre_endpoint(genre: str):
+    genre_r = userforgenre(genre)
+    return genre_r
+
+@app.get("/developer/{nombre}")
+def developer_endpoint(nombre: str):
+    developer_r = developer(nombre)
+    return developer_r
+
+@app.get("/sentiment_analysis/{year_analysys}")
+def sentiment_analysis_endpoint(year_analysys: int):
+    sentiment_analysis_r = sentiment_analysis(year_analysys)
+    return sentiment_analysis_r
+
+def userdata(user):
+    # Filtrar las columnas relevantes en df_games
     df_games_filtered = df_games[['item_id', 'price']]
-    df_review_filtered = df_review[['user_id', 'item_id', 'recommend']]
-    # Combinar df_items, df_games_filtered y df_review_filtered
-    merged_df = pd.merge(df_items, df_games_filtered, on='item_id', how='left')
-    # Combinamos con review filtrado
-    merged_df = pd.merge(merged_df, df_review_filtered, on=['user_id', 'item_id'], how='left')
-    # Filtrar por user_id
-    user_df = merged_df[merged_df['user_id'] == user_id]
-    money_spent = user_df['price'].sum() # Calcular la cantidad de dinero gastado por el usuario
+    # Filtramos por el user_id en el dataframe items
+    df_money = df_items[df_items.user_id == user]
+    # Eliminamos los duplicados
+    df_money = df_money['item_id'].drop_duplicates()
+    # Filtrar las columnas relevantes en df_games y df_review
+    df_money = pd.merge(df_money, df_games_filtered, on='item_id', how='left')
+    money_spent = df_money['price'].sum() # Calcular la cantidad de dinero gastado por el usuario
+
     # Calcular el porcentaje de recomendaciones positivas
-    total_recommendations = user_df[user_df['recommend'] == 1]['recommend'].count()
-    positive_recommendations = user_df[user_df['recommend'] == 1]['recommend'].sum()
+    total_recommendations = df_review[df_review.user_id == user]['recommend'].count()
+    positive_recommendations = df_review[(df_review.user_id == user) & (df_review.recommend == 1)]['recommend'].sum()
     if total_recommendations > 0:
         positive_recommendation_percentage = (positive_recommendations / total_recommendations) * 100
     else:
         positive_recommendation_percentage = 0.0
+    
     # Calcular la cantidad de items únicos
-    unique_items_count = user_df['item_id'].nunique()
+    unique_items_count = df_items[df_items.user_id == user]['item_id'].nunique()
     # Creando el diccionario resultado
-    result_dict = {
-        'dinero gastado por el usuario': money_spent,
-        'porcentaje de recomendaciones positivas del usuario': positive_recommendation_percentage,
-        'Número de items del usuario': unique_items_count
-    }
+    result_dict = {'dinero gastado por el usuario': money_spent,
+                    'porcentaje de recomendaciones positivas del usuario': positive_recommendation_percentage,
+                    'Número de items del usuario': unique_items_count}
+    
     return result_dict
 
-def count_reviews(start_date, end_date):
+def countreviews(start_date, end_date):
+    # Convertimos la cadena en un objeto datetime
+    start = datetime.strptime(start_date, "%Y-%m-%d")
+    end = datetime.strptime(end_date, "%Y-%m-%d")
+    # Convertimos la columna posted_date a formato datetime
+    df_review['posted_date'] = pd.to_datetime(df_review['posted_date'])
     # Filtrar por el rango de fechas
-    filtered_reviews = df_review[(df_review['posted_date'] >= start_date) & (df_review['posted_date'] <= end_date)]
+    filtered_reviews = df_review[(df_review['posted_date'] >= start) & (df_review['posted_date'] <= end)]
     
     # Calcular la cantidad de usuarios únicos que realizaron reviews
     unique_users_count = filtered_reviews['user_id'].nunique()
@@ -44,6 +104,10 @@ def count_reviews(start_date, end_date):
     positive_recommendations = filtered_reviews[filtered_reviews['recommend'] == 1].groupby('user_id')['recommend'].count()
     total_recommendations = filtered_reviews.groupby('user_id')['recommend'].count()
     positive_recommendation_percentages = (positive_recommendations / total_recommendations) * 100
+    
+    # Redondear los valores a dos decimales y convertirlos a cadenas
+    positive_recommendation_percentages = (positive_recommendations / total_recommendations) * 100
+    positive_recommendation_percentages = positive_recommendation_percentages.round(2).astype(str)
     
     # Crear el diccionario resultado
     result_dict = {'La cantidad de usuario que hicieron recomendaciones en las fechas dadas fueron': unique_users_count,
@@ -71,18 +135,17 @@ def genre(column_name):
     # Agregar una columna de posición numérica
     result_df_sorted.insert(0, 'Position', range(1, len(result_df_sorted) + 1))
     # Obtener la posición de la columna especificada
-    position = result_df_sorted[result_df_sorted.index == column_name]['Position'].values[0]
+    position = result_df_sorted.loc[result_df_sorted.index == column_name, 'Position'].values[0]
+    message = f"El género '{column_name}' está en la posición {position} en el ranking de playtime_forever."
 
-    return print(f"El genero '{column_name}' está en la posición {position} en el ranking de playtime_forever.")
+    return {"message": message}
 
 def userforgenre(column_name):
-    # Filtramos los df para hacer mejor la búsqueda
-    df_intems_filtered = df_items[['item_id', 'user_id', 'playtime_forever']]
     # Filtramos el df game para manejarlo mejor
     columns_to_exclude = ['title', 'url', 'price', 'early_access', 'developer', 'release_year']
     new_df_games = df_games.drop(columns=columns_to_exclude)
     # Unimos items y reviews con games
-    merge_df_items_games = pd.merge(df_intems_filtered, new_df_games, on='item_id', how='left')
+    merge_df_items_games = pd.merge(df_items, new_df_games, on='item_id', how='left')
     filtered_data = merge_df_items_games[merge_df_items_games[column_name] == 1][['user_id', 'playtime_forever']]
     pivot_table = filtered_data.pivot_table(index='user_id', values='playtime_forever', aggfunc=np.sum)
     # Ordenar el resultado por 'playtime_forever' de mayor a menor
@@ -91,9 +154,12 @@ def userforgenre(column_name):
     top_users = pivot_df_sorted.head(5)
     # Convertir el resultado en un nuevo dataframe
     pivot_df_as_dataframe = pd.DataFrame(top_users).reset_index()
-    # Agregar una columna con user_url buscado en df_review
-    user_url_mapping = df_review.drop_duplicates(subset='user_id').set_index('user_id')['user_url']
-    pivot_df_as_dataframe['user_url'] = pivot_df_as_dataframe['user_id'].map(user_url_mapping)
+    # Filtramos df_reviews
+    df_review_filtered = df_review[['user_id', 'user_url']]
+    # Hacemos un merge
+    pivot_df_as_dataframe = pd.merge(pivot_df_as_dataframe, df_review_filtered, on= 'user_id', how= 'left')
+    pivot_df_as_dataframe = pivot_df_as_dataframe.drop_duplicates()
+    pivot_df_as_dataframe.reset_index(drop=True, inplace=True)
     # Agregar una columna enumerada
     pivot_df_as_dataframe['Rank'] = range(1, len(pivot_df_as_dataframe['user_url']) + 1)
     # Crear un diccionario con los resultados
@@ -101,7 +167,14 @@ def userforgenre(column_name):
     for index, row in pivot_df_as_dataframe.iterrows():
         result_dict[row['user_id']] = {'Rank': row['Rank'], 'user_id': row['user_id'], 'user_url': row['user_url']}
 
-    return result_dict
+    try:
+        # Intenta serializar el diccionario a JSON
+        result_json = json.dumps(result_dict)
+    except Exception as e:
+        # Captura cualquier excepción que ocurra al intentar serializar
+        print(f"Error al serializar a JSON: {str(e)}")
+
+    return ORJSONResponse(content=result_dict)
 
 def developer(developer_name):
     df_developer = df_games[['developer', 'item_id', 'price', 'release_year']]
@@ -122,11 +195,13 @@ def developer(developer_name):
         free_games_count = year_data[year_data['price'] == 0]['item_id'].count()
         free_games_percentage = (free_games_count / total_games_in_year) * 100
         
-        # Agregar los resultados al diccionario
-        results[int(year)] = {
-            'unique_items_count': unique_items_count,
-            'free_games_percentage': free_games_percentage
-        }
+        # Convertir los valores de numpy.float64 a valores de punto flotante de Python
+        unique_items_count = float(unique_items_count)
+        free_games_percentage = float(free_games_percentage)
+        
+        # Agregar los resultados al diccionario como cadenas
+        results[str(int(year))] = {'Cantidad de items': unique_items_count,
+                                   'Porcentaje de contenido Free por año': free_games_percentage}
     
     return results
 
@@ -146,3 +221,5 @@ def sentiment_analysis(year):
     
     return formatted_counts
 
+if __name__ == "__main__":
+    app.run(host="localhost", port=8000)
