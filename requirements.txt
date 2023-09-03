@@ -16,3 +16,4 @@ typing_extensions==4.7.1
 tzdata==2023.3
 uvicorn==0.20.0
 pyarrow==10.0.1
+orjson==3.8.1
