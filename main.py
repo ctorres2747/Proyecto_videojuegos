@@ -82,9 +82,9 @@ def userdata(user):
     # Calcular la cantidad de items únicos
     unique_items_count = df_items[df_items.user_id == user]['item_id'].nunique()
     # Creando el diccionario resultado
-    result_dict = {'dinero gastado por el usuario': money_spent,
-                    'porcentaje de recomendaciones positivas del usuario': positive_recommendation_percentage,
-                    'Número de items del usuario': unique_items_count}
+    result_dict = {'Dinero gastado por el usuario': float(money_spent),
+                    'Porcentaje de recomendaciones positivas del usuario': float(positive_recommendation_percentage),
+                    'Número de items del usuario': int(unique_items_count)}
     
     return result_dict
 
@@ -115,29 +115,30 @@ def countreviews(start_date, end_date):
     
     return result_dict
 
+# Hacemos calculos fuera de la función para hacer mas ligera la consulta de la función genre 
+df_intems_filtered = df_items[['item_id', 'playtime_forever']]
+# Eliminamos columnas que no necesitamos
+columas_para_excluir = ['title', 'url', 'price', 'early_access', 'developer', 'release_year']
+new_df_games = df_games.drop(columns=columas_para_excluir)
+# Hacemos un merge del df games con el df filtrado
+merge_df = pd.merge(df_intems_filtered, new_df_games, on= 'item_id', how= 'left')
+# Crear un nuevo dataframe para guardar los resultados
+result_df = pd.DataFrame(columns=['Total_Playtime'])
+# Realizar el ciclo for para calcular sumatoria por columna
+for column in merge_df.columns:
+    if column != 'playtime_forever':
+        total_playtime = merge_df[merge_df[column] == 1]['playtime_forever'].sum()
+        result_df.at[column, 'Total_Playtime'] = total_playtime
+# Ordenar el dataframe de mayor a menor
+result_df_sorted = result_df.sort_values(by='Total_Playtime', ascending=False)
+# Agregar una columna de posición numérica
+result_df_sorted.insert(0, 'Position', range(1, len(result_df_sorted) + 1))
+
 def genre(column_name):
-    # Filtramos los df para hacer mejor la busqueda 
-    df_intems_filtered = df_items[['item_id', 'playtime_forever']]
-    # Eliminamos columnas que no necesitamos
-    columas_para_excluir = ['title', 'url', 'price', 'early_access', 'developer', 'release_year']
-    new_df_games = df_games.drop(columns=columas_para_excluir)
-    # Hacemos un merge del df games con el df filtrado
-    merge_df = pd.merge(df_intems_filtered, new_df_games, on= 'item_id', how= 'left')
-    # Crear un nuevo dataframe para guardar los resultados
-    result_df = pd.DataFrame(columns=['Total_Playtime'])
-    # Realizar el ciclo for para calcular sumatoria por columna
-    for column in merge_df.columns:
-        if column != 'playtime_forever':
-            total_playtime = merge_df[merge_df[column] == 1]['playtime_forever'].sum()
-            result_df.at[column, 'Total_Playtime'] = total_playtime
-    # Ordenar el dataframe de mayor a menor
-    result_df_sorted = result_df.sort_values(by='Total_Playtime', ascending=False)
-    # Agregar una columna de posición numérica
-    result_df_sorted.insert(0, 'Position', range(1, len(result_df_sorted) + 1))
     # Obtener la posición de la columna especificada
     position = result_df_sorted.loc[result_df_sorted.index == column_name, 'Position'].values[0]
     message = f"El género '{column_name}' está en la posición {position} en el ranking de playtime_forever."
-
+    
     return {"message": message}
 
 def userforgenre(column_name):
