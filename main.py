@@ -20,7 +20,9 @@ df_games = pd.read_csv('games.csv')
 df_games['item_id'] = df_games['item_id'].astype(str)
 df_genre = pd.read_csv('genre.csv')
 df_genre.columns = ['Genero', 'Posición', 'Playtimeforever']
-merge_df_items_games = pd.read_parquet('userforgenre.parquet')
+merge_df_items_games1 = pd.read_parquet('userforgenre1.parquet')
+merge_df_items_games2 = pd.read_parquet('userforgenre2.parquet')
+merge_df_items_games = pd.concat([merge_df_items_games1, merge_df_items_games2], ignore_index=False)
 merge_df_items_games['item_id'] = merge_df_items_games['item_id'].astype(str)
 
 # Asignar un valor a la variable app
