@@ -18,6 +18,10 @@ df_review = pd.read_csv('reviews.csv')
 df_review['item_id'] = df_review['item_id'].astype(str)
 df_games = pd.read_csv('games.csv')
 df_games['item_id'] = df_games['item_id'].astype(str)
+df_genre = pd.read_csv('genre.csv')
+df_genre.columns = ['Genero', 'Posición', 'Playtimeforever']
+merge_df_items_games = pd.read_parquet('userforgenre.parquet')
+merge_df_items_games['item_id'] = merge_df_items_games['item_id'].astype(str)
 
 # Asignar un valor a la variable app
 app = fastapi.FastAPI(default_response_class=ORJSONResponse)
@@ -116,36 +120,13 @@ def countreviews(start_date, end_date):
     return result_dict
 
 def genre(column_name):
-    # Filtramos los df para hacer mejor la busqueda 
-    df_intems_filtered = df_items[['item_id', 'playtime_forever']]
-    # Eliminamos columnas que no necesitamos
-    columas_para_excluir = ['title', 'url', 'price', 'early_access', 'developer', 'release_year']
-    new_df_games = df_games.drop(columns=columas_para_excluir)
-    # Hacemos un merge del df games con el df filtrado
-    merge_df = pd.merge(df_intems_filtered, new_df_games, on= 'item_id', how= 'left')
-    # Crear un nuevo dataframe para guardar los resultados
-    result_df = pd.DataFrame(columns=['Total_Playtime'])
-    # Realizar el ciclo for para calcular sumatoria por columna
-    for column in merge_df.columns:
-        if column != 'playtime_forever':
-            total_playtime = merge_df[merge_df[column] == 1]['playtime_forever'].sum()
-            result_df.at[column, 'Total_Playtime'] = total_playtime
-    # Ordenar el dataframe de mayor a menor
-    result_df_sorted = result_df.sort_values(by='Total_Playtime', ascending=False)
-    # Agregar una columna de posición numérica
-    result_df_sorted.insert(0, 'Position', range(1, len(result_df_sorted) + 1))
     # Obtener la posición de la columna especificada
-    position = result_df_sorted.loc[result_df_sorted.index == column_name, 'Position'].values[0]
+    position = df_genre.loc[df_genre.Genero == column_name, 'Posición'].values[0]
     message = f"El género '{column_name}' está en la posición {position} en el ranking de playtime_forever."
 
     return {"message": message}
 
 def userforgenre(column_name):
-    # Filtramos el df game para manejarlo mejor
-    columns_to_exclude = ['title', 'url', 'price', 'early_access', 'developer', 'release_year']
-    new_df_games = df_games.drop(columns=columns_to_exclude)
-    # Unimos items y reviews con games
-    merge_df_items_games = pd.merge(df_items, new_df_games, on='item_id', how='left')
     filtered_data = merge_df_items_games[merge_df_items_games[column_name] == 1][['user_id', 'playtime_forever']]
     pivot_table = filtered_data.pivot_table(index='user_id', values='playtime_forever', aggfunc=np.sum)
     # Ordenar el resultado por 'playtime_forever' de mayor a menor
@@ -166,7 +147,6 @@ def userforgenre(column_name):
     result_dict = {}
     for index, row in pivot_df_as_dataframe.iterrows():
         result_dict[row['user_id']] = {'Rank': row['Rank'], 'user_id': row['user_id'], 'user_url': row['user_url']}
-
     try:
         # Intenta serializar el diccionario a JSON
         result_json = json.dumps(result_dict)
