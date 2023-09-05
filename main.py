@@ -22,10 +22,10 @@ df_genre = pd.read_csv('genre.csv')
 df_genre.columns = ['Genero', 'Posición', 'Playtimeforever']
 
 
-# Asignar un valor a la variable app
+# Se define un valor a la variable app
 app = fastapi.FastAPI(default_response_class=ORJSONResponse)
 
-# Definir los endpoints de la API
+# Se definen los endpoints de la API
 @app.get("/")
 def index():
     return {"message": "Bienvenido a la API de Cristhian!"}
@@ -64,6 +64,16 @@ def sentiment_analysis_endpoint(year_analysys: int):
     return sentiment_analysis_r
 
 def userdata(user):
+    """
+    Esta función devuelve la cantidad de dinero gastado por el usuario, el porcentaje de recomendación en bese
+    a reviews_recommend y la cantidad de videojuegos jugados por el usuario.
+
+    Argumentos:
+        user (str): ID del usuario
+
+    Returns:
+        dic: retorna un diccionario con los tres valores
+    """
     # Filtrar las columnas relevantes en df_games
     df_games_filtered = df_games[['item_id', 'price']]
     # Filtramos por el user_id en el dataframe items
@@ -73,7 +83,6 @@ def userdata(user):
     # Filtrar las columnas relevantes en df_games y df_review
     df_money = pd.merge(df_money, df_games_filtered, on='item_id', how='left')
     money_spent = df_money['price'].sum() # Calcular la cantidad de dinero gastado por el usuario
-
     # Calcular el porcentaje de recomendaciones positivas
     total_recommendations = df_review[df_review.user_id == user]['recommend'].count()
     positive_recommendations = df_review[(df_review.user_id == user) & (df_review.recommend == 1)]['recommend'].sum()
@@ -81,7 +90,6 @@ def userdata(user):
         positive_recommendation_percentage = (positive_recommendations / total_recommendations) * 100
     else:
         positive_recommendation_percentage = 0.0
-    
     # Calcular la cantidad de items únicos
     unique_items_count = df_items[df_items.user_id == user]['item_id'].nunique()
     # Creando el diccionario resultado
@@ -92,6 +100,17 @@ def userdata(user):
     return result_dict
 
 def countreviews(start_date, end_date):
+    """
+    Esta función devuelve la cantidad de usuarios que realizaron reviews entre las fechas dadas y el porcentaje
+    de recomendación de kis mismos en base a reviews.recommend.
+
+    Argumentos:
+        start_date (str): Fecha Inicial
+        end_date (str): Fecha Final
+
+    Returns:
+        dic: retorna un diccionario con la información del rango de fechas ingresadas
+    """
     # Convertimos la cadena en un objeto datetime
     start = datetime.strptime(start_date, "%Y-%m-%d")
     end = datetime.strptime(end_date, "%Y-%m-%d")
@@ -119,6 +138,17 @@ def countreviews(start_date, end_date):
     return result_dict
 
 def genre(column_name):
+    """
+    Esta función devuelve el puesto en que que se encuentra un género de videojuego sobre el ranking de los 
+    mismos analizado bajo la columna playtime_forever que nos indica la cantidad de tiempo que un usuario
+    le dedica a cada videojuego.
+
+    Argumento:
+        column_name (str): El nombre del género
+
+    Returns:
+        dir: Un diccionario con la información de la posición 
+    """
     # Obtener la posición de la columna especificada
     position = df_genre.loc[df_genre.Genero == column_name, 'Posición'].values[0]
     message = f"El género '{column_name}' está en la posición {position} en el ranking de playtime_forever."
@@ -126,6 +156,22 @@ def genre(column_name):
     return {"message": message}
 
 def userforgenre(column_name):
+    """
+    Esta función devuelve el top 5 de los usuarios con mas horas de juego en el género dado con su url y 
+    user_id.
+
+    Argumentos:
+        column_name (str): Genero del videojuego
+
+    Returns:
+        json: información con el top 5 de usuarios
+    """
+    # Filtramos el df game para manejarlo mejor
+    columns_to_exclude = ['title', 'url', 'price', 'early_access', 'developer', 'release_year']
+    new_df_games = df_games.drop(columns=columns_to_exclude)
+    # Unimos items y reviews con games
+    merge_df_items_games = pd.merge(df_items, new_df_games, on='item_id', how='left')
+    
     filtered_data = merge_df_items_games[merge_df_items_games[column_name] == 1][['user_id', 'playtime_forever']]
     pivot_table = filtered_data.pivot_table(index='user_id', values='playtime_forever', aggfunc=np.sum)
     # Ordenar el resultado por 'playtime_forever' de mayor a menor
@@ -156,6 +202,16 @@ def userforgenre(column_name):
     return ORJSONResponse(content=result_dict)
 
 def developer(developer_name):
+    """
+    Esta función devuelve el año, la cantidad de items y el porcentaje de contenido gratis por cada año según
+    la empresa desarrolladora ingresada
+
+    Argumentos:
+        developer_name (str): Nombre de la empresa desarrolladora del videojuego
+
+    Returns:
+        dic: Diccionario con la información cantidad de items, año y porcentaje de contenido gratis
+    """
     df_developer = df_games[['developer', 'item_id', 'price', 'release_year']]
     # Filtrar el dataframe por el desarrollador especificado
     filtered_df = df_developer[df_developer['developer'] == developer_name]
@@ -185,6 +241,16 @@ def developer(developer_name):
     return results
 
 def sentiment_analysis(year):
+    """
+    Esta función devuelve una lista con la cantidad de registros de reseñas de usuarios que se encuentren 
+    categorizados con un análisis de sentimiento
+
+    Argumento:
+        year (int): Año a analizar
+
+    Returns:
+        dic: Diccionario con la cantidad de comentarios Negativos, Neutrales y Positivos
+    """
     df_sentiment_analysis = df_review[['user_id', 'posted_date', 'sentiment_analysis']]
     # Crear una copia del DataFrame para evitar problemas de asignación
     df_sentiment_analysis_copy = df_sentiment_analysis.copy()
